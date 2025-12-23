@@ -1,2 +1,3 @@
 # via
-"In electronic engineering, a through-silicon via (TSV) or through-chip via is a vertical electrical connection (via) that passes completely through a silicon wafer or die." - Wikipedia Vias are used to introduce layering to circuits; this is the concept that inspired this puzzle.
+"Through silicon vias are vertical wires used to precisely connect stacked chips" - Applied Materials 
+Vias are used to layer circuits; this is the concept that inspired this puzzle.

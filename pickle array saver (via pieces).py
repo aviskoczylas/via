@@ -1,7 +1,8 @@
 import pickle
 
 # format is [x length, y length, height]
-#Note, things may get messed up if there are any identical pieces
+#NO 2 PIECES CAN BE IDENTICAL! 
+# If you want to use identical pieces, it will be better performance-wise to change the sum(piece_vars)<=1 constraint in the solver anyways.
 pieces = [
     [2,1,3],
     [2,1,1],
