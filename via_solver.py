@@ -5,17 +5,17 @@ import pickle
 import matplotlib.pyplot as plt
 from ortools.sat.python import cp_model
 import os
-#TODO when saving to file, print out both solution 
-#TODO once everything else is done - make a solid 10 puzzles by hand, then make an automated puzzle generator.
 
-puzzle_num = 4
-write_to_file = True
+puzzle_num = 1
+write_to_file = 1
+puzzle_path = f"sample_puzzles/puzzle{puzzle_num}.png"
+sol_path = f"sample_solutions/sol{puzzle_num}"
 if write_to_file: #don't allow previous puzzles to be overwritten
-    if os.path.exists(f"sample_puzzles/puzzle{puzzle_num}.png") or os.path.exists(f"sample_solutions/sol{puzzle_num}"):
+    if os.path.exists(puzzle_path) or os.path.exists(sol_path):
         print("Error - path already exists.")
         assert(False)
     else:
-        os.makedirs(f"sample_solutions/sol{puzzle_num}")
+        os.makedirs(sol_path)
 
 
 #Two plotting options: a single (somewhat messy) isometric view, or a simple 2d plot of each layer separately
@@ -28,16 +28,22 @@ max_solve_time = 720
 
 #generate all possible orientations for the pieces
 def rotate(piece):
-    orientations = [piece]
-    orientations.append([piece[0], -piece[1], piece[2]])
-    orientations.append([piece[1], piece[0], piece[2]])
-    orientations.append([-piece[1], piece[0], piece[2]])
-    if piece[0] != 0 and piece[1] !=0:
-        orientations.append([-piece[0], piece[1], piece[2]])
-        orientations.append([-piece[0], -piece[1], piece[2]])
-        orientations.append([piece[1], -piece[0], piece[2]])
-        orientations.append([-piece[1], -piece[0], piece[2]])
-    return orientations
+    orientations = [
+        [piece[0], piece[1], piece[2]],
+        [-piece[0], piece[1], piece[2]],  
+        [piece[0], -piece[1], piece[2]],
+        [-piece[0], -piece[1], piece[2]],
+        [piece[1], piece[0], piece[2]],
+        [-piece[1], piece[0], piece[2]],
+        [piece[1], -piece[0], piece[2]],
+        [-piece[1], -piece[0], piece[2]],
+    ]
+    unique_orientations = []
+    for orientation in orientations:
+        if not any(np.array_equal(orientation, existing) for existing in unique_orientations):
+            unique_orientations.append(orientation)
+    return unique_orientations
+
 
 # load pieces from a file.
 with open('via_pieces.pkl', 'rb') as file:
@@ -60,16 +66,24 @@ terminals = t+r+b[::-1]+l[::-1] #clockwise
 #     11 x x x 6
 #     x 10 9 8 7
 
-active_terminals = [(terminals[11], terminals[1], terminals[4]),
-                    (terminals[2], terminals[13], terminals[7]), (terminals[5], terminals[9])]
+active_terminals = [
+                    #(terminals[3], terminals[4], terminals[6], terminals[11], terminals[13]),
+                    #(terminals[5], terminals[8])
+                    (terminals[0],terminals[1],terminals[11],terminals[6]),
+                    (terminals[2],terminals[10]),
+                    (terminals[9],terminals[12],terminals[4])
+]
                     
 elevated_terminals = [terminals[12], terminals[0],terminals[2], terminals[4],terminals[6]]
 
 #specify starting pieces as [piece, row, col], for example [(rotate(pieces[0])[0],0,0)]
 #note that starting pieces can only be placed on the floor
 starting_pieces = [
-    #[(rotate(pieces[0])[2],1,0)]
+    [(rotate(pieces[3])[3],2,1)],
+    [(rotate(pieces[6])[2],4,2)],
+    [(rotate(pieces[1])[6],4,1)]
 ]   
+#print(rotate(pieces[1]))
 
 #generate all possible placements of a piece on the board as a list of [orientation, x, y]
 #note that a "placement" on the board does specify an orientation, and layer is not included in this list
@@ -164,7 +178,7 @@ def plot_grid(solution_grid, solver = None, force_layer_view=None):
                     plt.savefig(f"sample_solutions/sol{puzzle_num}/solution.png")
                 plt.clf()
             else:
-                plt.savefig(f"sample_puzzles/puzzle{puzzle_num}.png")
+                plt.savefig(puzzle_path)
         else:
             plt.show()
 
@@ -224,20 +238,38 @@ def plot_piece_3d(row, col, match_row, match_col, layer, height, node_id = -1):
     plt.scatter(top_col_1, top_row_1, s=size, c=colors[node_id], zorder=layer*scaler+1)
     plt.scatter(top_col_2, top_row_2, s=size, c=colors[node_id], zorder=layer*scaler+1)
 
+#plot puzzle starting configuration
+starting_grid = []
+for row in range(board_rows):
+    row_list = []
+    for col in range(board_cols):
+        row_list.append([])
+    starting_grid.append(row_list)
+
 placements_list = []
 is_starter_idx = [] # Tracks if this index is a starter
 piece_heights = []
 
-for piece in pieces: 
+for piece_num, piece in enumerate(pieces): 
     matched_starter = None
     piece_heights.append(piece[2])
 
     # check if any orientation for this piece matches a starter
     possible_orientations = rotate(piece)
-    for [(s_shape, s_row, s_col)] in starting_pieces:
+    for [(s_piece, s_row, s_col)] in starting_pieces:
         for orient in possible_orientations:
-            if np.array_equal(s_shape, orient):
-                matched_starter = [(s_shape, s_row, s_col)]
+            if np.array_equal(s_piece, orient):
+                #track starting pieces
+                matched_starter = [(s_piece, s_row, s_col)]
+                #plot starting pieces
+                starting_grid[s_row][s_col].append(piece_num) 
+                x_len, y_len = s_piece[0], s_piece[1]
+                end_row, end_col = s_row+y_len, s_col+x_len
+                if 0 <= end_row < board_rows and 0 <= end_col < board_cols:
+                    starting_grid[end_row][end_col].append(piece_num)
+                else:
+                    print(f"Error: Starting piece {piece_num} at ({s_row},{s_col}) extends off-board to ({end_row},{end_col})")
+                    assert(False)
                 break
             
     if matched_starter:
@@ -249,17 +281,6 @@ for piece in pieces:
         placements_list.append(possible_placements(piece))
         is_starter_idx.append(False)
 
-#plot puzzle starting configuration
-starting_grid = []
-for row in range(board_rows):
-    row_list = []
-    for col in range(board_cols):
-        row_list.append([])
-    starting_grid.append(row_list)
-for [(starting_piece,row,col)] in starting_pieces:
-    starting_grid[row][col].append(1)
-    x_len, y_len = starting_piece[0], starting_piece[1]
-    starting_grid[row+y_len][col+x_len].append(1)
 plot_grid(starting_grid)
 
 Model = cp_model.CpModel()
@@ -624,11 +645,15 @@ if solution in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         create_sol_grid(placements_list, piece_vars_list, solver)
 elif solution == cp_model.UNKNOWN:
     print(f"Search aborted after {max_solve_time/60} minutes.")
-    #clear things out so we can rerun with the same puzzle number
-    os.remove(f"sample_puzzles/puzzle{puzzle_num}.png")
-    os.remove(f"sample_solutions/sol{puzzle_num}")
+    if write_to_file:
+        #clear things out so we can rerun with the same puzzle number
+        os.remove(puzzle_path)
+        import shutil  # Import here if not at top
+        shutil.rmtree(sol_path)
 else:
     print("No solution found.")
-    #clear things out so we can rerun with the same puzzle number
-    os.remove(f"sample_puzzles/puzzle{puzzle_num}.png")
-    os.remove(f"sample_solutions/sol{puzzle_num}")
+    if write_to_file:
+        #clear things out so we can rerun with the same puzzle number
+        os.remove(puzzle_path)
+        import shutil
+        shutil.rmtree(sol_path)
