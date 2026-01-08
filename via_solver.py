@@ -7,7 +7,7 @@ from ortools.sat.python import cp_model
 import os
 
 puzzle_num = 1
-write_to_file = 1
+write_to_file = 0
 puzzle_path = f"sample_puzzles/puzzle{puzzle_num}.png"
 sol_path = f"sample_solutions/sol{puzzle_num}"
 if write_to_file: #don't allow previous puzzles to be overwritten
@@ -165,11 +165,11 @@ def plot_grid(solution_grid, solver = None, force_layer_view=None):
                             plot_piece_3d(row, col, match_row, match_col, layer, piece_heights[piece_id], node_id)
                             plotted_pieces.append(piece_id)
 
-        plt.xlim(-0.5, board_cols-0.5)
+        plt.xlim(-0.5, board_cols+0.5)
         plt.ylim(-board_rows-0.5,1.5)
-        plt.gca().set_aspect(1, adjustable='datalim')
+        plt.gca().set_aspect(1, adjustable='box')
         plt.tight_layout()
-        plt.gca().tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
+        plt.axis('off')
         if write_to_file:
             if solver is not None:
                 if use_layer_view:
@@ -406,32 +406,25 @@ for row in range(board_rows):
             Model.add_max_equality(max_stack_height, node_tops)
             Model.add(max_stack_height == sum(node_heights))
 
-#handle collisions with elevated terminals
+#handle collisionswith elevated terminals
 for i, piece_list in enumerate(placements_list):
-    #calculate wire z level which is at the top of the piece
-    #in the future, I could make pieces with the wire at a different z level.
     z_wire_height = z_bottom_vars[i] + piece_heights[i]
-    #only non diagonal pieces can intersect elevated terminals
-    if pieces[i][0] == 0 or pieces[i][1] == 0:
-        for j, (orientation, start_row, start_col) in enumerate(piece_list):
-            terminal_in_the_way = False
-            end_row = start_row + orientation[1]
-            end_col = start_col + orientation[0]
-            #check intersection for purely horizontal pieces
-            if start_row == end_row:
-                c_min = min(start_col, end_col)
-                c_max = max(start_col, end_col)
-                if any((start_row, c) in elevated_terminals for c in range(c_min + 1, c_max)):
-                    terminal_in_the_way = True
-            #check intersection for purely vertical pieces
-            elif start_col == end_col:
-                r_min = min(start_row, end_row)
-                r_max = max(start_row, end_row)
-                if any((r, start_col) in elevated_terminals for r in range(r_min + 1, r_max)):
-                    terminal_in_the_way = True
-            if terminal_in_the_way:
-                #if this placement is used, wire must pass above the top of the terminal, ie top of piece must be at layer 2 or higher
-                Model.add(z_wire_height > 1).only_enforce_if(piece_vars_list[i][j])
+    for j, (orientation, start_row, start_col) in enumerate(piece_list):
+        wire_var = piece_vars_list[i][j]
+        end1 = (start_row, start_col)
+        end2 = (start_row + orientation[1], start_col + orientation[0])
+        
+        # Check against every elevated terminal
+        for terminal_loc in elevated_terminals:
+            # exclude endpoints 
+            if terminal_loc == end1 or terminal_loc == end2:
+                continue
+            # is the elevated terminal on this line segment?
+            # Check 1: Is the terminal collinear with the wire?
+            # Check 2: Is the terminal in the wire's "box"?
+            if orient(end1, terminal_loc, end2) == 0 and onSegment(end1, terminal_loc, end2):
+                # there's a terminal in the way of this wire, so wire height must be > 1 if this placement is used.
+                Model.add(z_wire_height > 1).only_enforce_if(wire_var)
 
 z_tops = []
 for i in range(len(pieces)):
