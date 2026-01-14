@@ -8,17 +8,17 @@ import os
 import shutil
 import random
 
-starting_puzzle_num = 39
-num_puzzles_to_generate = 22
-#puzzle type a is a dfault setup - 13 terminals and 5 elevated terminals placed in specific positions along the border
+starting_puzzle_num = 70
+num_puzzles_to_generate = 100
+#puzzle type a is a default setup - 13 terminals and 5 elevated terminals placed in specific positions along the border
 #puzzle type b shuffles terminal/elevated terminal location, number, etc but still requires terminals to be placed at the border of the board
 #puzzle type c shuffles without restriction on terminal locations
-puzzle_type = "a"
+puzzle_type = "c"
 
 #Maximum z layer that pieces can occupy. Lower makes solver much faster, but if too low, may miss possible solutions
 z_max = 5
 #this solver sometimes has trouble proving infeasability, so the solver aborts if it can't find find a solution within a reasonable time
-max_solve_time = 3600
+max_solve_time = 1800
 # load pieces from a file.
 with open('via_pieces.pkl', 'rb') as file:
     pieces = pickle.load(file)
@@ -31,12 +31,8 @@ def rotate(piece):
     orientations = [
         [piece[0], piece[1], piece[2]],
         [-piece[0], piece[1], piece[2]],  
-        [piece[0], -piece[1], piece[2]],
-        [-piece[0], -piece[1], piece[2]],
         [piece[1], piece[0], piece[2]],
         [-piece[1], piece[0], piece[2]],
-        [piece[1], -piece[0], piece[2]],
-        [-piece[1], -piece[0], piece[2]],
     ]
     unique_orientations = []
     for orientation in orientations:
@@ -124,11 +120,11 @@ def plot_grid(solution_grid, solver = None, use_layer_view=False):
                             plot_piece_3d(row, col, match_row, match_col, layer, piece_heights[piece_id], node_id)
                             plotted_pieces.append(piece_id)
 
-        plt.xlim(-0.5, board_cols+0.5)
+        plt.xlim(-1.5, board_cols+0.5)
         plt.ylim(-board_rows-0.5,1.5)
         plt.gca().set_aspect(1, adjustable='box')
         plt.tight_layout()
-        plt.axis('off')
+        plt.gca().tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         if solver is not None:
             if use_layer_view:
                 plt.savefig(f"sample_solutions/type_{puzzle_type}/sol{puzzle_num}/layer_{current_layer}.png")
@@ -240,15 +236,21 @@ def doIntersect(points):
 #above is from https://www.geeksforgeeks.org/dsa/check-if-two-given-line-segments-intersect/
 
 def valid_starters(starting_pieces, elevated_terminals):
-    if starting_pieces is None:
+    if starting_pieces is None: 
         return False
     if len(starting_pieces) >1:
-        #max of 2 starting pieces, so it's easy
             [(piece1, row1, col1)] = starting_pieces[0]
             [(piece2, row2, col2)] = starting_pieces[1]
-            points = [[[row1, col1], [row1+piece1[1], col1+piece1[0]]], [[row2, col2], [row2+piece2[1], col2+piece2[0]]]]
-            if doIntersect(points):
+            points_1 = [[row1, col1], [row1+piece1[1], col1+piece1[0]]]
+            points_2 = [[row2, col2], [row2+piece2[1], col2+piece2[0]]]
+            if doIntersect([points_1, points_2]):
                 return False
+            if len(starting_pieces) > 2: #max of 3 starting pieces, so it's easy
+                [(piece3, row3, col3)] = starting_pieces[2]
+                points_3 = [[row3, col3], [row3+piece3[1], col3+piece3[0]]]
+                if doIntersect([points_1, points_3]) or doIntersect([points_2, points_3]):
+                    return False
+
     #handle collisions with elevated terminals
     for [(orientation, start_row, start_col)] in starting_pieces:
         end1 = (start_row, start_col)
@@ -313,7 +315,7 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
         num_elevated_terminals = np.random.randint(0,6 if num_terminals >= 5 else num_terminals+1)
         elevated_terminals = random.sample(terminals, k=num_elevated_terminals)
 
-    num_active_terminals = np.random.randint(4, 11 if num_terminals>=10 else num_terminals)
+    num_active_terminals = np.random.randint(4, 11 if num_terminals>=10 else num_terminals+1)
     num_terminal_sets = np.random.randint(1, 6 if num_active_terminals >= 10 else num_active_terminals//2+1)
 
     #Determine size for each terminal set, each must have at least 2 members 
@@ -610,14 +612,13 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
     #In order to force all terminals to be connected (no self loops or other shenanigans)
     # we set up a flow system.
     # make one terminal in the set a "supply" and give all other terminals a "demand" that must be fulfilled
-    for network_index, terminal_set in enumerate(active_terminals):
+    node_supply = [0] * len(board_locs_list)
+    for terminal_set in active_terminals:
         #define supply and demand
-        id = network_index + 1
-        #pick a supply terminal, the rest are demand terminals
         supply_index = board_locs_list.index(terminal_set[0])
         demand_locs = terminal_set[1:]
         #all supplies are set to 0
-        node_supply = [0] * len(board_locs_list)
+        
         #except for the supply node, which is given 1 supply for each demand
         node_supply[supply_index] = len(demand_locs)
         #and the demand nodes, which are given -1 supply each
@@ -625,54 +626,47 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
             demand_index = board_locs_list.index(loc)
             node_supply[demand_index] = -1
 
-        # define flow
-        piece_flow = [] 
-        max_flow = len(terminal_set) - 1
-        
+    # define flow
+    piece_flow = [] 
+    # to keep bounds on integer variables tight, max flow = number of demand nodes in the largest terminal set
+    max_flow = max([len(terminal_set) for terminal_set in active_terminals]) - 1
+    
+    for i, piece_list in enumerate(placements_list):
+        placement_flow = []
+        for j, (orientation, row, col) in enumerate(piece_list):
+            flow = Model.new_int_var(-max_flow, max_flow, f'flow_{i}_{j}')
+
+            #if a placement is not used, flow must be 0 for that placement
+            Model.add(flow == 0).only_enforce_if(~piece_vars_list[i][j])
+
+            #a placed piece can have flow zero (useless piece), but then it must have id = 0 (for clarity in ploting solutions).
+            zero_flow = Model.new_bool_var(f'zero_flow_{i}_{j}')
+            Model.add(flow == 0).only_enforce_if(zero_flow)
+            Model.add(flow != 0).only_enforce_if(~zero_flow)
+            id = node_ids[board_locs_list.index((row, col))]
+            Model.add(id == 0).only_enforce_if([zero_flow, piece_vars_list[i][j]])
+
+            placement_flow.append(flow)
+        piece_flow.append(placement_flow)
+
+    #flow is created or removed in accordance with supply and demand. Otherwise, flow in = flow out of a node
+    for node_index in range(len(board_locs_list)):
+        inflow = 0
+        outflow = 0
+        #check which pieces are touching the node
         for i, piece_list in enumerate(placements_list):
-            placement_flow = []
             for j, (orientation, row, col) in enumerate(piece_list):
-                flow = Model.new_int_var(-max_flow, max_flow, f'flow_network_{id}_placement{i}_{j}')
-
-                #if a placement is not used, flow must be 0 for that placement
-                Model.add(flow == 0).only_enforce_if(~piece_vars_list[i][j])
-                
-                #if a placement is used, but it already has a different id, flow must be 0 for that placement (with respect to this network)
                 start_index = board_locs_list.index((row, col))
-                #variable defines a piece being taken by another network
-                taken = Model.new_bool_var(f'taken_{id}_placement{i}_{j}')
-                Model.add(node_ids[start_index] == id).only_enforce_if(~taken)
-                Model.add(node_ids[start_index] != id).only_enforce_if(taken)
-                Model.add(flow == 0).only_enforce_if(taken)
+                end_index = board_locs_list.index((row + orientation[1], col + orientation[0]))
                 
-                placement_flow.append(flow)
-            piece_flow.append(placement_flow)
-
-        #flow is created or removed in accordance with supply and demand. Otherwise, flow in = flow out of a node
-        for node_index in range(len(board_locs_list)):
-            inflow = 0
-            outflow = 0
-            #check which pieces are touching the node
-            for i, piece_list in enumerate(placements_list):
-                for j, (orientation, row, col) in enumerate(piece_list):
-                    start_index = board_locs_list.index((row, col))
-                    end_index = board_locs_list.index((row + orientation[1], col + orientation[0]))
-                    
-                    if end_index == node_index:
-                        #if the "end" of the piece is touching the node, flow enters the node
-                        inflow += piece_flow[i][j]
-                    elif start_index == node_index:
-                        #if the "start" of the piece is touching the node, flow exits the node
-                        outflow += piece_flow[i][j] 
-            net_flow = inflow - outflow
-                    
-            #apply the supply/demand constraint to all nodes in the network
-            node_in_network = Model.new_bool_var(f'node_{node_index}_in_network{id}')
-            Model.add(node_ids[node_index] == id).only_enforce_if(node_in_network)
-            Model.add(node_ids[node_index] != id).only_enforce_if(~node_in_network)
-            Model.add(net_flow == node_supply[node_index]).only_enforce_if(node_in_network)
-            #otherwise, flow with respect to this network is 0
-            Model.add(net_flow == 0).only_enforce_if(~node_in_network)
+                if end_index == node_index:
+                    #if the "end" of the piece is touching the node, flow enters the node
+                    inflow += piece_flow[i][j]
+                elif start_index == node_index:
+                    #if the "start" of the piece is touching the node, flow exits the node
+                    outflow += piece_flow[i][j] 
+        net_flow = inflow - outflow
+        Model.add(net_flow == node_supply[node_index])
 
     # Solve the model
     print(f'Solve for puzzle {puzzle_num} starting at {time.time()-start} s')
@@ -699,4 +693,3 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
         #clear things out so we can rerun with the same puzzle number
         os.remove(puzzle_path)
         shutil.rmtree(sol_path)
-

@@ -7,6 +7,6 @@ This repo contains many sample puzzles and solutions using all the same piece sh
 
 The repo also contains a solver for any given starting conditions and a puzzle generator to create new puzzles. These plot solutions in 2 different ways, so you can easily see where to put the pieces. 
 
-coming soon - make solver/generator more efficient with multiple terminal sets, delete bad/trivial puzzles, generate more (good) puzzles, and upload 3d models. 
+3d models coming soon. 
 
 This is a completely original project. Feel free to make copies of or modify any part of this project for personal, non-commercial use. For any commercial use, please request my permission.

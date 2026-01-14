@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 from ortools.sat.python import cp_model
 import os
 
-puzzle_num = 1
+puzzle_num = 67
 write_to_file = 0
-puzzle_path = f"sample_puzzles/puzzle{puzzle_num}.png"
-sol_path = f"sample_solutions/sol{puzzle_num}"
+puzzle_path = f"sample_puzzles/type_a/puzzle{puzzle_num}.png"
+sol_path = f"sample_solutions/type_a/sol{puzzle_num}"
 if write_to_file: #don't allow previous puzzles to be overwritten
     if os.path.exists(puzzle_path) or os.path.exists(sol_path):
         print("Error - path already exists.")
@@ -17,26 +17,18 @@ if write_to_file: #don't allow previous puzzles to be overwritten
     else:
         os.makedirs(sol_path)
 
-
-#Two plotting options: a single (somewhat messy) isometric view, or a simple 2d plot of each layer separately
-separate_layer_view = False
-
 #Maximum z layer that pieces can occupy. Lower makes solver much faster, but if too low, may miss possible solutions
 z_max = 5
-#this solver seems to have trouble proving infeasability, so the solver aborts if it can't find find a solution within a reasonable time
-max_solve_time = 720
+#this solver sometimes has trouble proving infeasability, so the solver aborts if it can't find find a solution within a reasonable time
+max_solve_time = 1800
 
 #generate all possible orientations for the pieces
 def rotate(piece):
     orientations = [
         [piece[0], piece[1], piece[2]],
         [-piece[0], piece[1], piece[2]],  
-        [piece[0], -piece[1], piece[2]],
-        [-piece[0], -piece[1], piece[2]],
         [piece[1], piece[0], piece[2]],
         [-piece[1], piece[0], piece[2]],
-        [piece[1], -piece[0], piece[2]],
-        [-piece[1], -piece[0], piece[2]],
     ]
     unique_orientations = []
     for orientation in orientations:
@@ -67,11 +59,8 @@ terminals = t+r+b[::-1]+l[::-1] #clockwise
 #     x 10 9 8 7
 
 active_terminals = [
-                    #(terminals[3], terminals[4], terminals[6], terminals[11], terminals[13]),
-                    #(terminals[5], terminals[8])
-                    (terminals[0],terminals[1],terminals[11],terminals[6]),
-                    (terminals[2],terminals[10]),
-                    (terminals[9],terminals[12],terminals[4])
+
+    (terminals[1], terminals[3],terminals[4],terminals[6],terminals[7],terminals[8],terminals[9],terminals[10]),
 ]
                     
 elevated_terminals = [terminals[12], terminals[0],terminals[2], terminals[4],terminals[6]]
@@ -79,11 +68,11 @@ elevated_terminals = [terminals[12], terminals[0],terminals[2], terminals[4],ter
 #specify starting pieces as [piece, row, col], for example [(rotate(pieces[0])[0],0,0)]
 #note that starting pieces can only be placed on the floor
 starting_pieces = [
-    [(rotate(pieces[3])[3],2,1)],
-    [(rotate(pieces[6])[2],4,2)],
-    [(rotate(pieces[1])[6],4,1)]
+    [(rotate(pieces[0])[3],2,2)]
 ]   
-#print(rotate(pieces[1]))
+for piece in pieces:
+    print(rotate(piece))
+    print("\n")
 
 #generate all possible placements of a piece on the board as a list of [orientation, x, y]
 #note that a "placement" on the board does specify an orientation, and layer is not included in this list
@@ -112,17 +101,14 @@ def create_sol_grid(placements_list, piece_vars_list, solver):
                 solution_grid[row][col].append(i)
                 solution_grid[row+y_len][col+x_len].append(i)
     if write_to_file:
-            plot_grid(solution_grid, solver, force_layer_view=False)
-            plot_grid(solution_grid, solver, force_layer_view=True)
+            plot_grid(solution_grid, solver)
+            plot_grid(solution_grid, solver, use_layer_view=True)
     else:
         plot_grid(solution_grid, solver)
 
 size = 800
-def plot_grid(solution_grid, solver = None, force_layer_view=None):
+def plot_grid(solution_grid, solver = None, use_layer_view=False):
     plotted_pieces = [-1] 
-
-    #  use the argument if writing to file, or the global variable if displaying
-    use_layer_view = force_layer_view if force_layer_view is not None else separate_layer_view
 
     max_z = 0
     if use_layer_view:
@@ -137,9 +123,9 @@ def plot_grid(solution_grid, solver = None, force_layer_view=None):
     #loop once for each layer if 2d, or once if 3d.
     for current_layer in range(use_layer_view*max_z+1):
         plot_terminals()
-        for row in range(board_rows-2):
-            for col in range(board_cols-2):
-                plt.scatter(col+1, -row-1, s = 1, c="black")
+        for row in range(board_rows):
+            for col in range(board_cols):
+                plt.scatter(col, -row, s = 1, c="black")
 
         for row in range(board_rows):
             for col in range(board_cols):
@@ -165,17 +151,17 @@ def plot_grid(solution_grid, solver = None, force_layer_view=None):
                             plot_piece_3d(row, col, match_row, match_col, layer, piece_heights[piece_id], node_id)
                             plotted_pieces.append(piece_id)
 
-        plt.xlim(-0.5, board_cols+0.5)
+        plt.xlim(-1.5, board_cols+0.5)
         plt.ylim(-board_rows-0.5,1.5)
         plt.gca().set_aspect(1, adjustable='box')
         plt.tight_layout()
-        plt.axis('off')
+        plt.gca().tick_params(left=False, bottom=False, labelleft=False, labelbottom=False)
         if write_to_file:
             if solver is not None:
                 if use_layer_view:
-                    plt.savefig(f"sample_solutions/sol{puzzle_num}/layer_{current_layer}.png")
+                    plt.savefig(f"{sol_path}/layer_{current_layer}.png")
                 else:
-                    plt.savefig(f"sample_solutions/sol{puzzle_num}/solution.png")
+                    plt.savefig(f"{sol_path}/solution.png")
                 plt.clf()
             else:
                 plt.savefig(puzzle_path)
@@ -193,7 +179,7 @@ def plot_terminals():
         plt.scatter(col, -row, s = size*1.4, marker = "s", c = "black", zorder = 2)
         if (row, col) in elevated_terminals:
             plt.scatter(col, -row, s = size*1.6, marker = "s", c = "white", zorder = 1)
-            plt.scatter(col, -row, s = size*1.8, marker = "s", c = "black", zorder = 0)
+            plt.scatter(col, -row, s = size*2, marker = "s", c = "black", zorder = 0)
     for i, terminal_group in enumerate(active_terminals):
         for row, col in terminal_group:
             plt.scatter(col, -row, s = size*1.4, marker = "s", c = colors[i+1], zorder = 2)
@@ -559,14 +545,13 @@ for i, piece_list in enumerate(placements_list):
 #In order to force all terminals to be connected (no self loops or other shenanigans)
 # we set up a flow system.
 # make one terminal in the set a "supply" and give all other terminals a "demand" that must be fulfilled
-for network_index, terminal_set in enumerate(active_terminals):
+node_supply = [0] * len(board_locs_list)
+for terminal_set in active_terminals:
     #define supply and demand
-    id = network_index + 1
-    #pick a supply terminal, the rest are demand terminals
     supply_index = board_locs_list.index(terminal_set[0])
     demand_locs = terminal_set[1:]
     #all supplies are set to 0
-    node_supply = [0] * len(board_locs_list)
+    
     #except for the supply node, which is given 1 supply for each demand
     node_supply[supply_index] = len(demand_locs)
     #and the demand nodes, which are given -1 supply each
@@ -574,54 +559,47 @@ for network_index, terminal_set in enumerate(active_terminals):
         demand_index = board_locs_list.index(loc)
         node_supply[demand_index] = -1
 
-    # define flow
-    piece_flow = [] 
-    max_flow = len(terminal_set) - 1
-    
+# define flow
+piece_flow = [] 
+# to keep bounds on integer variables tight, max flow = number of demand nodes in the largest terminal set
+max_flow = max([len(terminal_set) for terminal_set in active_terminals]) - 1
+
+for i, piece_list in enumerate(placements_list):
+    placement_flow = []
+    for j, (orientation, row, col) in enumerate(piece_list):
+        flow = Model.new_int_var(-max_flow, max_flow, f'flow_{i}_{j}')
+
+        #if a placement is not used, flow must be 0 for that placement
+        Model.add(flow == 0).only_enforce_if(~piece_vars_list[i][j])
+
+        #a placed piece can have flow zero (useless piece), but then it must have id = 0 (for clarity in ploting solutions).
+        zero_flow = Model.new_bool_var(f'zero_flow_{i}_{j}')
+        Model.add(flow == 0).only_enforce_if(zero_flow)
+        Model.add(flow != 0).only_enforce_if(~zero_flow)
+        id = node_ids[board_locs_list.index((row, col))]
+        Model.add(id == 0).only_enforce_if([zero_flow, piece_vars_list[i][j]])
+
+        placement_flow.append(flow)
+    piece_flow.append(placement_flow)
+
+#flow is created or removed in accordance with supply and demand. Otherwise, flow in = flow out of a node
+for node_index in range(len(board_locs_list)):
+    inflow = 0
+    outflow = 0
+    #check which pieces are touching the node
     for i, piece_list in enumerate(placements_list):
-        placement_flow = []
         for j, (orientation, row, col) in enumerate(piece_list):
-            flow = Model.new_int_var(-max_flow, max_flow, f'flow_network_{id}_placement{i}_{j}')
-
-            #if a placement is not used, flow must be 0 for that placement
-            Model.add(flow == 0).only_enforce_if(~piece_vars_list[i][j])
-            
-            #if a placement is used, but it already has a different id, flow must be 0 for that placement (with respect to this network)
             start_index = board_locs_list.index((row, col))
-            #variable defines a piece being taken by another network
-            taken = Model.new_bool_var(f'taken_{id}_placement{i}_{j}')
-            Model.add(node_ids[start_index] == id).only_enforce_if(~taken)
-            Model.add(node_ids[start_index] != id).only_enforce_if(taken)
-            Model.add(flow == 0).only_enforce_if(taken)
+            end_index = board_locs_list.index((row + orientation[1], col + orientation[0]))
             
-            placement_flow.append(flow)
-        piece_flow.append(placement_flow)
-
-    #flow is created or removed in accordance with supply and demand. Otherwise, flow in = flow out of a node
-    for node_index in range(len(board_locs_list)):
-        inflow = 0
-        outflow = 0
-        #check which pieces are touching the node
-        for i, piece_list in enumerate(placements_list):
-            for j, (orientation, row, col) in enumerate(piece_list):
-                start_index = board_locs_list.index((row, col))
-                end_index = board_locs_list.index((row + orientation[1], col + orientation[0]))
-                
-                if end_index == node_index:
-                    #if the "end" of the piece is touching the node, flow enters the node
-                    inflow += piece_flow[i][j]
-                elif start_index == node_index:
-                    #if the "start" of the piece is touching the node, flow exits the node
-                    outflow += piece_flow[i][j] 
-        net_flow = inflow - outflow
-                
-        #apply the supply/demand constraint to all nodes in the network
-        node_in_network = Model.new_bool_var(f'node_{node_index}_in_network{id}')
-        Model.add(node_ids[node_index] == id).only_enforce_if(node_in_network)
-        Model.add(node_ids[node_index] != id).only_enforce_if(~node_in_network)
-        Model.add(net_flow == node_supply[node_index]).only_enforce_if(node_in_network)
-        #otherwise, flow with respect to this network is 0
-        Model.add(net_flow == 0).only_enforce_if(~node_in_network)
+            if end_index == node_index:
+                #if the "end" of the piece is touching the node, flow enters the node
+                inflow += piece_flow[i][j]
+            elif start_index == node_index:
+                #if the "start" of the piece is touching the node, flow exits the node
+                outflow += piece_flow[i][j] 
+    net_flow = inflow - outflow
+    Model.add(net_flow == node_supply[node_index])
 
 # Solve the model
 print(f'Solve starting at {time.time()-start} s')
