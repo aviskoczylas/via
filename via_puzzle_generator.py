@@ -14,6 +14,9 @@ num_puzzles_to_generate = 100
 #puzzle type b shuffles terminal/elevated terminal location, number, etc but still requires terminals to be placed at the border of the board
 #puzzle type c shuffles without restriction on terminal locations
 puzzle_type = "c"
+#The puzzles this solver geneates are usually pretty easy. Hard mode greatly increases puzzle generation time,
+#but ensures that at least 9/10 pieces are actually necessary to solve the puzzle.
+hard_mode = 0
 
 #Maximum z layer that pieces can occupy. Lower makes solver much faster, but if too low, may miss possible solutions
 z_max = 5
@@ -315,7 +318,7 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
         num_elevated_terminals = np.random.randint(0,6 if num_terminals >= 5 else num_terminals+1)
         elevated_terminals = random.sample(terminals, k=num_elevated_terminals)
 
-    num_active_terminals = np.random.randint(4, 11 if num_terminals>=10 else num_terminals+1)
+    num_active_terminals = np.random.randint(6, 11 if num_terminals>=10 else num_terminals+1)
     num_terminal_sets = np.random.randint(1, 6 if num_active_terminals >= 10 else num_active_terminals//2+1)
 
     #Determine size for each terminal set, each must have at least 2 members 
@@ -668,21 +671,30 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
         net_flow = inflow - outflow
         Model.add(net_flow == node_supply[node_index])
 
+    if hard_mode:
+        all_piece_vars = [var for sublist in piece_vars_list for var in sublist]
+        Model.minimize(sum(all_piece_vars))
+
     # Solve the model
     print(f'Solve for puzzle {puzzle_num} starting at {time.time()-start} s')
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = max_solve_time
-    all_piece_bools = [var for sublist in piece_vars_list for var in sublist]
-    Model.add_decision_strategy(all_piece_bools, cp_model.CHOOSE_FIRST, cp_model.SELECT_MAX_VALUE)
     #solver.parameters.log_search_progress = True
     solution = solver.Solve(Model)
     print(f'Solve for puzzle {puzzle_num} finished at {time.time()-start} s')
 
     #if there's a solution, plot it.
     if solution in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            create_sol_grid(placements_list, piece_vars_list, solver)
-            print(f"Puzzle {puzzle_num} generated successfully.")
-            puzzle_num += 1
+        if hard_mode:
+            if solver.ObjectiveValue() < 9: 
+                #at least 9/10 pieces must be necessary for a puzzle to be "hard"
+                os.remove(puzzle_path)
+                shutil.rmtree(sol_path)
+                print("Not hard enough. Regenerating")
+                continue
+        create_sol_grid(placements_list, piece_vars_list, solver)
+        print(f"Puzzle {puzzle_num} generated successfully.")
+        puzzle_num += 1
     elif solution == cp_model.UNKNOWN:
         print(f"Search aborted after {max_solve_time/60} minutes. Retrying.")
         #clear things out so we can rerun with the same puzzle number

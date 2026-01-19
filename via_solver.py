@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 from ortools.sat.python import cp_model
 import os
 
-puzzle_num = 67
-write_to_file = 0
-puzzle_path = f"sample_puzzles/type_a/puzzle{puzzle_num}.png"
-sol_path = f"sample_solutions/type_a/sol{puzzle_num}"
+puzzle_num = 100
+write_to_file = 1
+puzzle_path = f"sample_puzzles/type_c/puzzle{puzzle_num}.png"
+sol_path = f"sample_solutions/type_c/sol{puzzle_num}"
 if write_to_file: #don't allow previous puzzles to be overwritten
     if os.path.exists(puzzle_path) or os.path.exists(sol_path):
         print("Error - path already exists.")
@@ -59,8 +59,7 @@ terminals = t+r+b[::-1]+l[::-1] #clockwise
 #     x 10 9 8 7
 
 active_terminals = [
-
-    (terminals[1], terminals[3],terminals[4],terminals[6],terminals[7],terminals[8],terminals[9],terminals[10]),
+    (terminals[4],terminals[6])
 ]
                     
 elevated_terminals = [terminals[12], terminals[0],terminals[2], terminals[4],terminals[6]]
@@ -68,11 +67,8 @@ elevated_terminals = [terminals[12], terminals[0],terminals[2], terminals[4],ter
 #specify starting pieces as [piece, row, col], for example [(rotate(pieces[0])[0],0,0)]
 #note that starting pieces can only be placed on the floor
 starting_pieces = [
-    [(rotate(pieces[0])[3],2,2)]
+    #[(rotate(pieces[0])[3],2,2)]
 ]   
-for piece in pieces:
-    print(rotate(piece))
-    print("\n")
 
 #generate all possible placements of a piece on the board as a list of [orientation, x, y]
 #note that a "placement" on the board does specify an orientation, and layer is not included in this list
