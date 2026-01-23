@@ -8,15 +8,15 @@ import os
 import shutil
 import random
 
-starting_puzzle_num = 70
+starting_puzzle_num = 60
 num_puzzles_to_generate = 100
 #puzzle type a is a default setup - 13 terminals and 5 elevated terminals placed in specific positions along the border
 #puzzle type b shuffles terminal/elevated terminal location, number, etc but still requires terminals to be placed at the border of the board
 #puzzle type c shuffles without restriction on terminal locations
-puzzle_type = "c"
+puzzle_type = "b"
 #The puzzles this solver geneates are usually pretty easy. Hard mode greatly increases puzzle generation time,
 #but ensures that at least 9/10 pieces are actually necessary to solve the puzzle.
-hard_mode = 0
+hard_mode = 1
 
 #Maximum z layer that pieces can occupy. Lower makes solver much faster, but if too low, may miss possible solutions
 z_max = 5
@@ -337,7 +337,7 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
     #specify starting pieces as [piece, row, col], for example [(rotate(pieces[0])[0],0,0)]
     #note that starting pieces can only be placed on the floor
 
-    num_starting_pieces = np.random.randint(0, 4)
+    num_starting_pieces = np.random.randint(0, 3 if hard_mode else 4)
     starting_pieces = None
     while not valid_starters(starting_pieces, elevated_terminals):
         starting_pieces = []
@@ -686,8 +686,8 @@ while puzzle_num < starting_puzzle_num+num_puzzles_to_generate:
     #if there's a solution, plot it.
     if solution in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if hard_mode:
-            if solver.ObjectiveValue() < 9: 
-                #at least 9/10 pieces must be necessary for a puzzle to be "hard"
+            if solver.ObjectiveValue() < 10: 
+                #all pieces must be necessary for a puzzle to be "hard"
                 os.remove(puzzle_path)
                 shutil.rmtree(sol_path)
                 print("Not hard enough. Regenerating")
